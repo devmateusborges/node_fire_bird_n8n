@@ -1,5 +1,13 @@
-import { INodeType, INodeTypeDescription } from 'n8n-workflow';
-import { createConnection } from 'node-firebird';
+import { IExecuteFunctions, INodeType, INodeTypeDescription, ICredentialDataDecryptedObject, IDataObject } from 'n8n-workflow';
+import Firebird from 'node-firebird';
+
+interface IFirebirdCredentials extends ICredentialDataDecryptedObject {
+	host: string;
+	port: number; // Adicione a propriedade port
+	database: string;
+	user: string;
+	password: string;
+}
 
 export class FirebirdConnector implements INodeType {
 	description: INodeTypeDescription = {
@@ -13,8 +21,10 @@ export class FirebirdConnector implements INodeType {
 		defaults: {
 			name: 'Firebird Connector',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [
+		
+		],
+		outputs: [],
 		credentials: [
 			{
 				name: 'firebirdApi',
@@ -73,7 +83,7 @@ export class FirebirdConnector implements INodeType {
 	async execute(this: IExecuteFunctions) {
 		const items = this.getInputData();
 		const returnData = [];
-		const credentials = this.getCredentials('firebirdApi');
+		const credentials = this.getCredentials('firebirdApi') as unknown as IFirebirdCredentials; // Cast para o tipo correto
 		if (!credentials) {
 			throw new Error('No credentials returned!');
 		}
@@ -89,8 +99,8 @@ export class FirebirdConnector implements INodeType {
 		for (let i = 0; i < items.length; i++) {
 			try {
 				const sqlQuery = this.getNodeParameter('sqlQuery', i) as string;
-				const connection = await new Promise((resolve, reject) => {
-					createConnection(options, (err, conn) => {
+				const connection = await new Promise<Firebird.Database>((resolve, reject) => {
+					Firebird.attach(options, (err, conn) => {
 						if (err) {
 							reject(err);
 						} else {
@@ -100,7 +110,7 @@ export class FirebirdConnector implements INodeType {
 				});
 
 				const result = await new Promise((resolve, reject) => {
-					connection.query(sqlQuery, (err, res) => {
+					connection.query(sqlQuery, [], (err, res) => {
 						if (err) {
 							reject(err);
 						} else {
@@ -109,10 +119,11 @@ export class FirebirdConnector implements INodeType {
 					});
 				});
 
-				returnData.push({ json: result });
+				returnData.push({ json: result as IDataObject });
+				connection.detach(); // Fecha a conexão após a execução
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ json: { error: error.message } });
+					returnData.push({ json: { error: (error as Error).message } });
 				} else {
 					throw error;
 				}
